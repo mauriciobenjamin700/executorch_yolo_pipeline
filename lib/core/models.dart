@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import './pre_processing.dart';
+
 class PytorchModel {
   ExecuTorchModel? model;
   String modelPath;
@@ -54,5 +56,42 @@ class PytorchModel {
   Future<void> dispose() async {
     await model?.dispose();
     debugPrint('Modelo descarregado de $modelPath');
+  }
+}
+
+class DetectionModel extends PytorchModel {
+  DetectionModel({
+    required super.model,
+    required super.modelPath,
+    required super.inputWidth,
+    required super.inputHeight,
+    required super.labels,
+  });
+
+  Future<TensorData> forward(Uint8List inputData) async {
+    if (model == null) {
+      throw Exception('Modelo não carregado');
+    }
+
+    final tensorData = await PreProcessing.toTensorData(
+      inputData,
+      targetWidth: inputWidth,
+      targetHeight: inputHeight,
+    );
+
+    // Executa a inferência
+    final outputs = await model!.forward([tensorData]);
+
+    debugPrint('Inferência concluída no modelo de detecção');
+    for (var output in outputs) {
+      debugPrint('Output shape: ${output.shape}');
+      debugPrint('Output type: ${output.dataType}');
+      debugPrint('Output data length: ${output.data.length}');
+      debugPrint(
+        'Output data (first 10 values): ${output.data.take(10).toList()}',
+      );
+    }
+
+    return outputs[0];
   }
 }
