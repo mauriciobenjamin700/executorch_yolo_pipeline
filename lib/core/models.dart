@@ -8,71 +8,48 @@ import 'package:path_provider/path_provider.dart';
 
 import './pre_processing.dart';
 
-class PytorchModel {
-  ExecuTorchModel? model;
-  String modelPath;
-  List<String> labels;
-  int inputWidth;
-  int inputHeight;
+Future<ExecuTorchModel> loadModel(String modelPath) async {
+    final byteData = await rootBundle.load(modelPath);
+    final tempDir = await getTemporaryDirectory();
+    final modelTempName = modelPath.split('/').last;
+    // Avoid appending an extra .pte if modelPath already contains the extension
+    final file = File('${tempDir.path}/$modelTempName');
+    await file.writeAsBytes(byteData.buffer.asUint8List());
+    debugPrint('Loading model from: ${file.path}');
+    try {
+      final model = await ExecuTorchModel.load(file.path);
+      debugPrint('ExecuTorchModel.load returned: $model');
+      return model;
+    } catch (e) {
+      debugPrint('Erro ao carregar ExecuTorchModel: $e');
+      rethrow;
+    }
+}
 
-  PytorchModel({
-    required ExecuTorchModel model,
+Future<List<String>> loadLabels(String labelsPath) async {
+  final labelsData = await rootBundle.loadString(labelsPath);
+  final labels = const LineSplitter().convert(labelsData);
+  debugPrint('Rótulos carregados de $labelsPath');
+  return labels;
+}
+
+class DetectionModel {
+  final ExecuTorchModel model;
+  final String modelPath;
+  final int inputWidth;
+  final int inputHeight;
+  final List<String> labels;
+
+  DetectionModel({
+    required this.model,
     required this.modelPath,
     required this.inputWidth,
     required this.inputHeight,
     required this.labels,
   });
 
-  static Future<PytorchModel> loadModel(
-    String modelPath,
-    String labelsPath,
-    int inputWidth,
-    int inputHeight,
-  ) async {
-    // Carrega o modelo do arquivo de ativos para um diretório temporário
-    final byteData = await rootBundle.load(modelPath);
-    final tempDir = await getTemporaryDirectory();
-    final modelTempName = modelPath.split('/').last;
-    final file = File('${tempDir.path}/$modelTempName.pte');
-    await file.writeAsBytes(byteData.buffer.asUint8List());
-    final aux = await ExecuTorchModel.load(file.path);
-
-    // Carrega os rótulos das classes
-    final labelsData = await rootBundle.loadString(labelsPath);
-    final labels = const LineSplitter().convert(labelsData);
-    debugPrint('Rótulos carregados de $labelsPath');
-
-    // Retorna a instância do modelo
-    debugPrint('Modelo carregado de $modelPath');
-    return PytorchModel(
-      model: aux,
-      modelPath: modelPath,
-      inputWidth: inputWidth,
-      inputHeight: inputHeight,
-      labels: labels,
-    );
-  }
-
-  Future<void> dispose() async {
-    await model?.dispose();
-    debugPrint('Modelo descarregado de $modelPath');
-  }
-}
-
-class DetectionModel extends PytorchModel {
-  DetectionModel({
-    required super.model,
-    required super.modelPath,
-    required super.inputWidth,
-    required super.inputHeight,
-    required super.labels,
-  });
 
   Future<TensorData> forward(Uint8List inputData) async {
-    if (model == null) {
-      throw Exception('Modelo não carregado');
-    }
-
     final tensorData = await PreProcessing.toTensorData(
       inputData,
       targetWidth: inputWidth,
@@ -80,7 +57,7 @@ class DetectionModel extends PytorchModel {
     );
 
     // Executa a inferência
-    final outputs = await model!.forward([tensorData]);
+    final outputs = await model.forward([tensorData]);
 
     debugPrint('Inferência concluída no modelo de detecção');
     for (var output in outputs) {
