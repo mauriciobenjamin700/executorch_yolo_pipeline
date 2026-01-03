@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import './core/models.dart';
+import './core/results.dart';
 
 void main() {
   runApp(const MyApp());
@@ -38,9 +40,11 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
+  Uint8List? _imageBytes;
   String _confidence = '—';
   String _classLabel = '—';
   DetectionModel? _model;
+  List<DetectionResult> _detections = [];
 
   Future<void> _loadModel() async {
     final aux = await loadModel('assets/yolov8n.pte');
@@ -59,16 +63,19 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _pickImage() async {
     final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
+      final bytes = await File(picked.path).readAsBytes();
       setState(() {
         _imageFile = File(picked.path);
+        _imageBytes = bytes;
         _confidence = '—';
         _classLabel = '—';
+        _detections = [];
       });
     }
   }
 
   Future<void> _execute() async {
-    if (_imageFile == null) {
+    if (_imageFile == null || _imageBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Selecione uma imagem primeiro')),
       );
@@ -79,15 +86,20 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     try {
-      // Preprocessar a imagem
-      final imageBytes = await _imageFile!.readAsBytes();
+      final imageBytes = _imageBytes!;
       final output = await _model!.forward(imageBytes);
       debugPrint('Output recebido: $output');
 
-      // TODO: Implementar lógica para extrair confiança e classe dos outputs
       setState(() {
-        _confidence = 'Aguardando lógica';
-        _classLabel = 'Aguardando lógica';
+        _detections = output;
+        if (output.isNotEmpty) {
+          final top = output.first;
+          _confidence = '${(top.confidence * 100).toStringAsFixed(1)}%';
+          _classLabel = top.label;
+        } else {
+          _confidence = 'Nenhuma detecção';
+          _classLabel = '—';
+        }
       });
     } catch (e) {
       ScaffoldMessenger.of(
@@ -129,14 +141,31 @@ class _MyHomePageState extends State<MyHomePage> {
 
             const SizedBox(height: 20),
 
-            // Preview superior
-            if (_imageFile != null) ...[
+            // Preview superior => agora com overlay de caixas
+            if (_imageBytes != null) ...[
               Center(
-                child: Image.file(
-                  _imageFile!,
+                child: SizedBox(
                   width: 200,
                   height: 200,
-                  fit: BoxFit.cover,
+                  child: Stack(
+                    fit: StackFit.passthrough,
+                    children: [
+                      Image.memory(
+                        _imageBytes!,
+                        width: 200,
+                        height: 200,
+                        fit: BoxFit.cover,
+                      ),
+                      CustomPaint(
+                        size: const Size(200, 200),
+                        painter: BoundingBoxPainter(
+                          _detections,
+                          inputWidth: _model?.inputWidth ?? 640,
+                          inputHeight: _model?.inputHeight ?? 640,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -149,7 +178,7 @@ class _MyHomePageState extends State<MyHomePage> {
               const SizedBox(height: 20),
             ],
 
-            // Área inferior com a mesma imagem e labels
+            // Área inferior com a mesma imagem e labels (mini preview com overlay)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
@@ -159,8 +188,25 @@ class _MyHomePageState extends State<MyHomePage> {
                       width: 120,
                       height: 120,
                       color: Colors.grey[100],
-                      child: _imageFile != null
-                          ? Image.file(_imageFile!, fit: BoxFit.cover)
+                      child: _imageBytes != null
+                          ? Stack(
+                              children: [
+                                Image.memory(
+                                  _imageBytes!,
+                                  width: 120,
+                                  height: 120,
+                                  fit: BoxFit.cover,
+                                ),
+                                CustomPaint(
+                                  size: const Size(120, 120),
+                                  painter: BoundingBoxPainter(
+                                    _detections,
+                                    inputWidth: _model?.inputWidth ?? 640,
+                                    inputHeight: _model?.inputHeight ?? 640,
+                                  ),
+                                ),
+                              ],
+                            )
                           : const Center(child: Text('Imagem')),
                     ),
                     const SizedBox(width: 16),
@@ -192,5 +238,74 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
     );
+  }
+}
+
+// Novo: painter para desenhar caixas e rótulos
+class BoundingBoxPainter extends CustomPainter {
+  final List<DetectionResult> detections;
+  final int inputWidth;
+  final int inputHeight;
+
+  BoundingBoxPainter(
+    this.detections, {
+    required this.inputWidth,
+    required this.inputHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.red;
+
+    final fill = Paint()
+      ..style = PaintingStyle.fill
+      ..color = Colors.red.withValues(alpha: 0.6);
+
+    for (final d in detections) {
+      if (d.bbox.length < 4) continue;
+      final left = d.bbox[0];
+      final top = d.bbox[1];
+      final right = d.bbox[2];
+      final bottom = d.bbox[3];
+
+      final sx = size.width / inputWidth;
+      final sy = size.height / inputHeight;
+
+      final rect = Rect.fromLTWH(
+        left * sx,
+        top * sy,
+        (right - left) * sx,
+        (bottom - top) * sy,
+      );
+
+      canvas.drawRect(rect, paint);
+
+      final label = '${d.label} ${(d.confidence * 100).toStringAsFixed(1)}%';
+      final textStyle = TextStyle(color: Colors.white, fontSize: 11);
+      final tp = TextPainter(
+        text: TextSpan(text: label, style: textStyle),
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+
+      final bgRect = Rect.fromLTWH(
+        rect.left,
+        rect.top - tp.height.clamp(12, 9999),
+        tp.width + 6,
+        tp.height,
+      );
+      canvas.drawRect(bgRect, fill);
+      tp.paint(canvas, Offset(rect.left + 3, bgRect.top));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant BoundingBoxPainter oldDelegate) {
+    return oldDelegate.detections != detections ||
+        oldDelegate.inputWidth != inputWidth ||
+        oldDelegate.inputHeight != inputHeight;
   }
 }
