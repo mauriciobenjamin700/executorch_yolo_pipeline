@@ -95,13 +95,6 @@ class DetectionModel {
 
     // Helpers
     double sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
-    List<double> softmax(List<double> arr) {
-      final maxV = arr.reduce(math.max);
-      final exps = arr.map((v) => math.exp(v - maxV)).toList();
-      final sum = exps.reduce((a, b) => a + b);
-      return exps.map((e) => e / sum).toList();
-    }
-
     final List<DetectionResult> detections = [];
 
     final expectedWithObj = labels.length + 5;
