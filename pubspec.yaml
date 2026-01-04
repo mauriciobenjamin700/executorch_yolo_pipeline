@@ -28,6 +28,9 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/yolo11n.pte
     - assets/yolov8n.pte
     - assets/detection_labels.txt
+    - assets/yolov8n-cls.pte
+    - assets/classification_labels.txt
+    - assets/yolov8n-seg.pte
+    - assets/segmentation_labels.txt

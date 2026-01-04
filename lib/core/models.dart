@@ -170,4 +170,8 @@ class DetectionModel {
     detections.sort((a, b) => b.confidence.compareTo(a.confidence));
     return detections;
   }
+
+
 }
+
+
