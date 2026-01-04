@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:executorch_flutter/executorch_flutter.dart';
+import 'package:executorch_yolo_pipeline/core/pre_processing.dart';
 import 'package:executorch_yolo_pipeline/core/results.dart';
 import 'package:executorch_yolo_pipeline/core/utils.dart';
 
@@ -22,9 +23,13 @@ class ClassifyModel {
   /// Realiza a predição de classificação em uma imagem de entrada.
   /// Retorna um [ClassificationResult] contendo os resultados da classificação.
   Future<ClassificationResult> predict(
-    TensorData inputTensor,
     Uint8List originalImageBytes,
   ) async {
+    final inputTensor = await PreProcessing.toTensorData(
+      originalImageBytes,
+      targetWidth: inputWidth,
+      targetHeight: inputHeight,
+    );
     final outputs = await forward(inputTensor, originalImageBytes);
     return getResult(outputs, originalImageBytes);
   }

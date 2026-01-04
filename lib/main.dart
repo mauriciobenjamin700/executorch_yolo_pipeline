@@ -51,14 +51,9 @@ class _MyHomePageState extends State<MyHomePage> {
   List<DetectionResult> _detections = [];
   ClassifyModel? _classificationModel;
   String _confidenceClassification = '—';
-  String _classLabelClassification = '—';
-  List<ClassificationResult> _classifications = [];
-  ClassificationResult? _lastClassification;
+  String _classLabelClassification = '—'; 
   SegmentModel? _segmentationModel;
-  String _confidenceSegmentation = '—';
-  String _classLabelSegmentation = '—';
-  List<SegmentationResult> _segmentations = [];
-  SegmentationResult? _lastSegmentation;
+
 
   Future<void> _loadModel() async {
     final detectionModel = await loadModel('assets/yolov8n.pte');
@@ -124,19 +119,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       final imageBytes = _imageBytes!;
-      final detectionOutput = await _detectionModel!.forward(imageBytes);
+      final detectionOutput = await _detectionModel!.predict(imageBytes);
       debugPrint('Detecção recebida: $detectionOutput');
       final classificationOutput = await _classificationModel!.predict(
-        await PreProcessing.toTensorData(
-          imageBytes,
-          targetWidth: _classificationModel!.inputWidth,
-          targetHeight: _classificationModel!.inputHeight,
-        ),
         imageBytes,
       );
       // Guarda resultado de classificação
       setState(() {
-        _lastClassification = classificationOutput;
         _confidenceClassification =
             '${(classificationOutput.confidence * 100).toStringAsFixed(1)}%';
         _classLabelClassification = classificationOutput.label;
@@ -144,27 +133,17 @@ class _MyHomePageState extends State<MyHomePage> {
       debugPrint('\n\nClassificação recebida: $classificationOutput');
       try {
         final segmentationOutput = await _segmentationModel!.predict(
-          await PreProcessing.toTensorData(
-            imageBytes,
-            targetWidth: _segmentationModel!.inputWidth,
-            targetHeight: _segmentationModel!.inputHeight,
-          ),
           imageBytes,
         );
         debugPrint('\n\nSegmentação recebida: $segmentationOutput');
         setState(() {
-          _lastSegmentation = segmentationOutput;
           _segmentedImageBytes = segmentationOutput.segmentedImage;
-          _confidenceSegmentation =
-              '${(segmentationOutput.confidence * 100).toStringAsFixed(1)}%';
         });
       } catch (e) {
         // Caso a segmentação falhe, usa a imagem original como fallback
         debugPrint('Segmentação falhou: $e');
         setState(() {
-          _lastSegmentation = null;
           _segmentedImageBytes = imageBytes;
-          _confidenceSegmentation = 'Falha na segmentação';
         });
       }
 

@@ -50,7 +50,7 @@ class DetectionModel {
     required this.labels,
   });
 
-  Future<List<DetectionResult>> forward(
+  Future<List<DetectionResult>> predict(
     Uint8List inputData, {
     double confThreshold = 0.25,
   }) async {
