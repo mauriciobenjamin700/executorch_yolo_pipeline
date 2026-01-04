@@ -44,6 +44,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
   Uint8List? _imageBytes;
+  Uint8List? _segmentedImageBytes;
   String _confidenceDetection = '—';
   String _classLabelDetection = '—';
   DetectionModel? _detectionModel;
@@ -52,18 +53,24 @@ class _MyHomePageState extends State<MyHomePage> {
   String _confidenceClassification = '—';
   String _classLabelClassification = '—';
   List<ClassificationResult> _classifications = [];
+  ClassificationResult? _lastClassification;
   SegmentModel? _segmentationModel;
   String _confidenceSegmentation = '—';
   String _classLabelSegmentation = '—';
   List<SegmentationResult> _segmentations = [];
+  SegmentationResult? _lastSegmentation;
 
   Future<void> _loadModel() async {
     final detectionModel = await loadModel('assets/yolov8n.pte');
     final detectionLabels = await loadLabels('assets/detection_labels.txt');
     final classificationModel = await loadModel('assets/yolov8n-cls.pte');
-    final classificationLabels = await loadLabels('assets/classification_labels.txt');
+    final classificationLabels = await loadLabels(
+      'assets/classification_labels.txt',
+    );
     final segmentationModel = await loadModel('assets/yolov8n-seg.pte');
-    final segmentationLabels = await loadLabels('assets/segmentation_labels.txt');
+    final segmentationLabels = await loadLabels(
+      'assets/segmentation_labels.txt',
+    );
 
     setState(() {
       _detectionModel = DetectionModel(
@@ -119,7 +126,6 @@ class _MyHomePageState extends State<MyHomePage> {
       final imageBytes = _imageBytes!;
       final detectionOutput = await _detectionModel!.forward(imageBytes);
       debugPrint('Detecção recebida: $detectionOutput');
-
       final classificationOutput = await _classificationModel!.predict(
         await PreProcessing.toTensorData(
           imageBytes,
@@ -128,23 +134,46 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         imageBytes,
       );
+      // Guarda resultado de classificação
+      setState(() {
+        _lastClassification = classificationOutput;
+        _confidenceClassification =
+            '${(classificationOutput.confidence * 100).toStringAsFixed(1)}%';
+        _classLabelClassification = classificationOutput.label;
+      });
       debugPrint('\n\nClassificação recebida: $classificationOutput');
-
-      final segmentationOutput = await _segmentationModel!.predict(
-        await PreProcessing.toTensorData(
+      try {
+        final segmentationOutput = await _segmentationModel!.predict(
+          await PreProcessing.toTensorData(
+            imageBytes,
+            targetWidth: _segmentationModel!.inputWidth,
+            targetHeight: _segmentationModel!.inputHeight,
+          ),
           imageBytes,
-          targetWidth: _segmentationModel!.inputWidth,
-          targetHeight: _segmentationModel!.inputHeight,
-        ),
-        imageBytes,
-      );
-      debugPrint('\n\nSegmentação recebida: $segmentationOutput');
+        );
+        debugPrint('\n\nSegmentação recebida: $segmentationOutput');
+        setState(() {
+          _lastSegmentation = segmentationOutput;
+          _segmentedImageBytes = segmentationOutput.segmentedImage;
+          _confidenceSegmentation =
+              '${(segmentationOutput.confidence * 100).toStringAsFixed(1)}%';
+        });
+      } catch (e) {
+        // Caso a segmentação falhe, usa a imagem original como fallback
+        debugPrint('Segmentação falhou: $e');
+        setState(() {
+          _lastSegmentation = null;
+          _segmentedImageBytes = imageBytes;
+          _confidenceSegmentation = 'Falha na segmentação';
+        });
+      }
 
       setState(() {
         _detections = detectionOutput;
         if (detectionOutput.isNotEmpty) {
           final top = detectionOutput.first;
-          _confidenceDetection = '${(top.confidence * 100).toStringAsFixed(1)}%';
+          _confidenceDetection =
+              '${(top.confidence * 100).toStringAsFixed(1)}%';
           _classLabelDetection = top.label;
         } else {
           _confidenceDetection = 'Nenhuma detecção';
@@ -251,8 +280,10 @@ class _MyHomePageState extends State<MyHomePage> {
                                   size: const Size(120, 120),
                                   painter: BoundingBoxPainter(
                                     _detections,
-                                    inputWidth: _detectionModel?.inputWidth ?? 640,
-                                    inputHeight: _detectionModel?.inputHeight ?? 640,
+                                    inputWidth:
+                                        _detectionModel?.inputWidth ?? 640,
+                                    inputHeight:
+                                        _detectionModel?.inputHeight ?? 640,
                                   ),
                                 ),
                               ],
@@ -283,6 +314,104 @@ class _MyHomePageState extends State<MyHomePage> {
                   ],
                 ),
               ),
+            ),
+            const SizedBox(height: 12),
+
+            // Novos cards: Classificação e Detecção (imagem, confiança, classe)
+            Column(
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          color: Colors.grey[100],
+                          child: _imageBytes != null
+                              ? Image.memory(
+                                  _imageBytes!,
+                                  width: 100,
+                                  height: 100,
+                                  fit: BoxFit.cover,
+                                )
+                              : const Center(child: Text('Imagem')),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Classificação',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(_classLabelClassification),
+                              const SizedBox(height: 6),
+                              Text(_confidenceClassification),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          color: Colors.grey[100],
+                          child: _segmentedImageBytes != null
+                              ? Stack(
+                                  children: [
+                                    Image.memory(
+                                      _segmentedImageBytes!,
+                                      width: 100,
+                                      height: 100,
+                                      fit: BoxFit.cover,
+                                    ),
+                                    CustomPaint(
+                                      size: const Size(100, 100),
+                                      painter: BoundingBoxPainter(
+                                        _detections,
+                                        inputWidth:
+                                            _detectionModel?.inputWidth ?? 640,
+                                        inputHeight:
+                                            _detectionModel?.inputHeight ?? 640,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : const Center(child: Text('Imagem')),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Detecção',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(_classLabelDetection),
+                              const SizedBox(height: 6),
+                              Text(_confidenceDetection),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
