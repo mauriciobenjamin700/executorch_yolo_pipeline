@@ -1,5 +1,3 @@
-
-
 import 'dart:typed_data';
 
 import 'package:executorch_flutter/executorch_flutter.dart';
@@ -7,7 +5,6 @@ import 'package:executorch_yolo_pipeline/core/results.dart';
 import 'package:executorch_yolo_pipeline/core/utils.dart';
 
 class ClassifyModel {
-  
   final ExecuTorchModel model;
   final String modelPath;
   final int inputWidth;
@@ -21,7 +18,6 @@ class ClassifyModel {
     required this.inputHeight,
     required this.labels,
   });
-
 
   /// Realiza a predição de classificação em uma imagem de entrada.
   /// Retorna um [ClassificationResult] contendo os resultados da classificação.
@@ -42,7 +38,6 @@ class ClassifyModel {
     try {
       final output = await model.forward([inputTensor]);
       return output;
-
     } catch (error) {
       rethrow;
     }
@@ -50,13 +45,22 @@ class ClassifyModel {
 
   /// Processa as saídas do modelo para gerar o resultado de classificação
   /// Retorna um [ClassificationResult] contendo os resultados da classificação.
-  ClassificationResult getResult (
+  ClassificationResult getResult(
     List<TensorData> outputs,
     Uint8List originalImageBytes,
   ) {
-    final probabilities = (outputs[0] as List<List<double>>)[0];
+    final out = outputs[0];
+    // Converte o buffer de bytes do tensor para Float32List de forma segura
+    final bd = ByteData.sublistView(out.data);
+    final floatCount = bd.lengthInBytes ~/ 4;
+    final floatData = Float32List(floatCount);
+    for (var i = 0; i < floatCount; i++) {
+      floatData[i] = bd.getFloat32(i * 4, Endian.little);
+    }
+    // Cria uma lista de probabilidades em double
+    final probabilities = floatData.map((e) => e.toDouble()).toList();
     final (maxIndex, maxProb) = getMaxIndexAndProb(probabilities);
-    
+
     return ClassificationResult(
       originalImage: originalImageBytes,
       label: labels[maxIndex],

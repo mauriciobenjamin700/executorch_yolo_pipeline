@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:executorch_yolo_pipeline/core/pre_processing.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import './core/models.dart';
+import './models/classify.dart';
+import './models/detection.dart';
+import './models/segment.dart';
 import './core/results.dart';
 
 void main() {
@@ -41,23 +44,50 @@ class _MyHomePageState extends State<MyHomePage> {
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
   Uint8List? _imageBytes;
-  String _confidence = '—';
-  String _classLabel = '—';
-  DetectionModel? _model;
+  String _confidenceDetection = '—';
+  String _classLabelDetection = '—';
+  DetectionModel? _detectionModel;
   List<DetectionResult> _detections = [];
+  ClassifyModel? _classificationModel;
+  String _confidenceClassification = '—';
+  String _classLabelClassification = '—';
+  List<ClassificationResult> _classifications = [];
+  SegmentModel? _segmentationModel;
+  String _confidenceSegmentation = '—';
+  String _classLabelSegmentation = '—';
+  List<SegmentationResult> _segmentations = [];
 
   Future<void> _loadModel() async {
-    final aux = await loadModel('assets/yolov8n.pte');
-    final auxLabels = await loadLabels('assets/detection_labels.txt');
+    final detectionModel = await loadModel('assets/yolov8n.pte');
+    final detectionLabels = await loadLabels('assets/detection_labels.txt');
+    final classificationModel = await loadModel('assets/yolov8n-cls.pte');
+    final classificationLabels = await loadLabels('assets/classification_labels.txt');
+    final segmentationModel = await loadModel('assets/yolov8n-seg.pte');
+    final segmentationLabels = await loadLabels('assets/segmentation_labels.txt');
+
     setState(() {
-      _model = DetectionModel(
-        model: aux,
+      _detectionModel = DetectionModel(
+        model: detectionModel,
         modelPath: 'assets/yolov8n.pte',
         inputWidth: 640,
         inputHeight: 640,
-        labels: auxLabels,
+        labels: detectionLabels,
+      );
+      _classificationModel = ClassifyModel(
+        model: classificationModel,
+        modelPath: 'assets/yolov8n-cls.pte',
+        inputWidth: 224,
+        inputHeight: 224,
+        labels: classificationLabels,
       );
     });
+    _segmentationModel = SegmentModel(
+      model: segmentationModel,
+      modelPath: 'assets/yolov8n-seg.pte',
+      inputWidth: 640,
+      inputHeight: 640,
+      labels: segmentationLabels,
+    );
   }
 
   Future<void> _pickImage() async {
@@ -67,8 +97,8 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         _imageFile = File(picked.path);
         _imageBytes = bytes;
-        _confidence = '—';
-        _classLabel = '—';
+        _confidenceDetection = '—';
+        _classLabelDetection = '—';
         _detections = [];
       });
     }
@@ -81,24 +111,44 @@ class _MyHomePageState extends State<MyHomePage> {
       );
       return;
     }
-    if (_model == null) {
+    if (_detectionModel == null) {
       await _loadModel();
     }
 
     try {
       final imageBytes = _imageBytes!;
-      final output = await _model!.forward(imageBytes);
-      debugPrint('Output recebido: $output');
+      final detectionOutput = await _detectionModel!.forward(imageBytes);
+      debugPrint('Detecção recebida: $detectionOutput');
+
+      final classificationOutput = await _classificationModel!.predict(
+        await PreProcessing.toTensorData(
+          imageBytes,
+          targetWidth: _classificationModel!.inputWidth,
+          targetHeight: _classificationModel!.inputHeight,
+        ),
+        imageBytes,
+      );
+      debugPrint('\n\nClassificação recebida: $classificationOutput');
+
+      final segmentationOutput = await _segmentationModel!.predict(
+        await PreProcessing.toTensorData(
+          imageBytes,
+          targetWidth: _segmentationModel!.inputWidth,
+          targetHeight: _segmentationModel!.inputHeight,
+        ),
+        imageBytes,
+      );
+      debugPrint('\n\nSegmentação recebida: $segmentationOutput');
 
       setState(() {
-        _detections = output;
-        if (output.isNotEmpty) {
-          final top = output.first;
-          _confidence = '${(top.confidence * 100).toStringAsFixed(1)}%';
-          _classLabel = top.label;
+        _detections = detectionOutput;
+        if (detectionOutput.isNotEmpty) {
+          final top = detectionOutput.first;
+          _confidenceDetection = '${(top.confidence * 100).toStringAsFixed(1)}%';
+          _classLabelDetection = top.label;
         } else {
-          _confidence = 'Nenhuma detecção';
-          _classLabel = '—';
+          _confidenceDetection = 'Nenhuma detecção';
+          _classLabelDetection = '—';
         }
       });
     } catch (e) {
@@ -160,8 +210,8 @@ class _MyHomePageState extends State<MyHomePage> {
                         size: const Size(200, 200),
                         painter: BoundingBoxPainter(
                           _detections,
-                          inputWidth: _model?.inputWidth ?? 640,
-                          inputHeight: _model?.inputHeight ?? 640,
+                          inputWidth: _detectionModel?.inputWidth ?? 640,
+                          inputHeight: _detectionModel?.inputHeight ?? 640,
                         ),
                       ),
                     ],
@@ -201,8 +251,8 @@ class _MyHomePageState extends State<MyHomePage> {
                                   size: const Size(120, 120),
                                   painter: BoundingBoxPainter(
                                     _detections,
-                                    inputWidth: _model?.inputWidth ?? 640,
-                                    inputHeight: _model?.inputHeight ?? 640,
+                                    inputWidth: _detectionModel?.inputWidth ?? 640,
+                                    inputHeight: _detectionModel?.inputHeight ?? 640,
                                   ),
                                 ),
                               ],
@@ -219,14 +269,14 @@ class _MyHomePageState extends State<MyHomePage> {
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 6),
-                          Text(_confidence),
+                          Text(_confidenceDetection),
                           const SizedBox(height: 12),
                           const Text(
                             'Classe',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 6),
-                          Text(_classLabel),
+                          Text(_classLabelDetection),
                         ],
                       ),
                     ),

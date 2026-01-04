@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-import './pre_processing.dart';
-import './results.dart';
+import '../core/pre_processing.dart';
+import '../core/results.dart';
 import 'dart:math' as math;
 
 Future<ExecuTorchModel> loadModel(String modelPath) async {

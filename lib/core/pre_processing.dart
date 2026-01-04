@@ -65,11 +65,20 @@ class PreProcessing {
 
     // Converter para Float32List
     final float32Data = Float32List.fromList(normalizedData);
+    // Obter bytes do buffer (cada float -> 4 bytes)
     final resizedImage = float32Data.buffer.asUint8List();
 
-    // Converte os bytes para TensorData
+    // Número de elementos esperados para shape [1,3,H,W]
+    final expectedElements = 1 * 3 * targetHeight * targetWidth;
+    if (float32Data.length != expectedElements) {
+      throw Exception(
+        'Tamanho dos dados incompatível: esperado $expectedElements, encontrado ${float32Data.length}',
+      );
+    }
+
+    // Converte os bytes para TensorData usando shape dinâmico [N, C, H, W]
     final inputTensor = TensorData(
-      shape: [1, 3, 640, 640],
+      shape: [1, 3, targetHeight, targetWidth],
       dataType: TensorType.float32,
       data: resizedImage,
     );

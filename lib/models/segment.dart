@@ -48,9 +48,85 @@ class SegmentModel {
     final firstCoeffIndex =
         5; // Índice da primeira coluna dos coeficientes da máscara
     double confidence;
+    // Converte outputs[0] -> segmentations (esperado como [1, channels, num_detections])
+    final outSeg = outputs[0];
+    // Ler floats de forma segura mesmo que o Uint8List seja um view desalinhado
+    final bdSeg = ByteData.sublistView(outSeg.data);
+    final floatLenSeg = bdSeg.lengthInBytes ~/ 4;
+    final floatSeg = Float32List(floatLenSeg);
+    for (var i = 0; i < floatLenSeg; i++) {
+      floatSeg[i] = bdSeg.getFloat32(i * 4, Endian.little);
+    }
+    final shapeSeg = outSeg.shape;
+    final channels = shapeSeg.length >= 3 ? shapeSeg[1]! : 0;
+    final numDet = shapeSeg.length >= 3 ? shapeSeg[2]! : 0;
 
-    final segmentations = (outputs[0].data as List<List<List<double>>>)[0];
-    final maskPrototypes = (outputs[1].data as List<List<List<List<double>>>>)[0];
+    final segmentations = List<List<double>>.generate(
+      channels,
+      (_) => List<double>.filled(numDet, 0.0),
+    );
+    for (int c = 0; c < channels; c++) {
+      for (int i = 0; i < numDet; i++) {
+        segmentations[c][i] = floatSeg[c * numDet + i];
+      }
+    }
+
+    // Converte outputs[1] -> mask prototypes (pode estar em NCHW ou NHWC)
+    final outProto = outputs[1];
+    final bdProto = ByteData.sublistView(outProto.data);
+    final floatLenProto = bdProto.lengthInBytes ~/ 4;
+    final floatProto = Float32List(floatLenProto);
+    for (var i = 0; i < floatLenProto; i++) {
+      floatProto[i] = bdProto.getFloat32(i * 4, Endian.little);
+    }
+    final shapeProto = outProto.shape;
+
+    late final List<List<List<double>>> maskPrototypes;
+    if (shapeProto.length >= 4) {
+      final a = shapeProto[1]!;
+      final b = shapeProto[2]!;
+      final d = shapeProto[3]!;
+      // Detecta se o layout é NCHW ([1, C, H, W]) ou NHWC ([1, H, W, C])
+      final floatLen = floatProto.length;
+      final maybeC = floatLen ~/ (b * d);
+      if (maybeC == a) {
+        // NCHW -> converter para [H][W][C]
+        final C = a;
+        final H = b;
+        final W = d;
+        maskPrototypes = List.generate(
+          H,
+          (_) => List.generate(W, (_) => List<double>.filled(C, 0.0)),
+        );
+        for (int c = 0; c < C; c++) {
+          final base = c * H * W;
+          for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+              maskPrototypes[y][x][c] = floatProto[base + y * W + x];
+            }
+          }
+        }
+      } else {
+        // NHWC -> [1, H, W, C]
+        final H = a;
+        final W = b;
+        final C = d;
+        maskPrototypes = List.generate(
+          H,
+          (_) => List.generate(W, (_) => List<double>.filled(C, 0.0)),
+        );
+        for (int y = 0; y < H; y++) {
+          for (int x = 0; x < W; x++) {
+            final base = (y * W + x) * C;
+            for (int c = 0; c < C; c++) {
+              maskPrototypes[y][x][c] = floatProto[base + c];
+            }
+          }
+        }
+      }
+    } else {
+      throw Exception('Formato inesperado para protótipos de máscara');
+    }
 
     final bestSegmentationIndex = getBestSegmentationIndex(
       segmentations,
