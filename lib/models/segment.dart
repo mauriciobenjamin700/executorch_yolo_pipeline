@@ -20,9 +20,7 @@ class SegmentModel {
     required this.labels,
   });
 
-  Future<SegmentationResult> predict(
-    Uint8List originalImageBytes,
-  ) async {
+  Future<SegmentationResult> predict(Uint8List originalImageBytes) async {
     final inputTensor = await PreProcessing.toTensorData(
       originalImageBytes,
       targetWidth: inputWidth,
@@ -161,6 +159,11 @@ class SegmentModel {
         ? segmentations[4][bestSegmentationIndex]
         : 0.0;
 
+    final segLabel =
+        (bestSegmentationIndex >= 0 && bestSegmentationIndex < labels.length)
+        ? labels[bestSegmentationIndex]
+        : null;
+
     return SegmentationResult(
       originalImage: originalImageBytes,
       segmentedImage: segmentedImageBytes,
@@ -173,6 +176,7 @@ class SegmentModel {
         'threshold': segmentationThreshold,
         'firstCoeffIndex': firstCoeffIndex,
         'originalImageSize': '${originalImage.width}x${originalImage.height}',
+        'label': segLabel,
       },
     );
   }

@@ -34,3 +34,4 @@ flutter:
     - assets/classification_labels.txt
     - assets/yolov8n-seg.pte
     - assets/segmentation_labels.txt
+    - assets/

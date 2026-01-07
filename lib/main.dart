@@ -44,27 +44,24 @@ class _MyHomePageState extends State<MyHomePage> {
   File? _imageFile;
   Uint8List? _imageBytes;
   Uint8List? _segmentedImageBytes;
+  String _confidenceSegmentation = '—';
+  String _classLabelSegmentation = '—';
   String _confidenceDetection = '—';
   String _classLabelDetection = '—';
   DetectionModel? _detectionModel;
   List<DetectionResult> _detections = [];
   ClassifyModel? _classificationModel;
   String _confidenceClassification = '—';
-  String _classLabelClassification = '—'; 
+  String _classLabelClassification = '—';
   SegmentModel? _segmentationModel;
-
 
   Future<void> _loadModel() async {
     final detectionModel = await loadModel('assets/yolov8n.pte');
     final detectionLabels = await loadLabels('assets/detection_labels.txt');
-    final classificationModel = await loadModel('assets/yolov8n-cls.pte');
-    final classificationLabels = await loadLabels(
-      'assets/classification_labels.txt',
-    );
-    final segmentationModel = await loadModel('assets/yolov8n-seg.pte');
-    final segmentationLabels = await loadLabels(
-      'assets/segmentation_labels.txt',
-    );
+    final classificationModel = await loadModel('assets/cls-v11-famacha.pte');
+    final classificationLabels = await loadLabels('assets/cls-v11-famacha.txt');
+    final segmentationModel = await loadModel('assets/seg-v11-famacha.pte');
+    final segmentationLabels = await loadLabels('assets/seg-v11-famacha.txt');
 
     setState(() {
       _detectionModel = DetectionModel(
@@ -76,15 +73,15 @@ class _MyHomePageState extends State<MyHomePage> {
       );
       _classificationModel = ClassifyModel(
         model: classificationModel,
-        modelPath: 'assets/yolov8n-cls.pte',
-        inputWidth: 224,
-        inputHeight: 224,
+        modelPath: 'assets/cls-v11-famacha.pte',
+        inputWidth: 640,
+        inputHeight: 640,
         labels: classificationLabels,
       );
     });
     _segmentationModel = SegmentModel(
       model: segmentationModel,
-      modelPath: 'assets/yolov8n-seg.pte',
+      modelPath: 'assets/seg-v11-famacha.pte',
       inputWidth: 640,
       inputHeight: 640,
       labels: segmentationLabels,
@@ -137,12 +134,20 @@ class _MyHomePageState extends State<MyHomePage> {
         debugPrint('\n\nSegmentação recebida: $segmentationOutput');
         setState(() {
           _segmentedImageBytes = segmentationOutput.segmentedImage;
+          _confidenceSegmentation =
+              '${(segmentationOutput.confidence * 100).toStringAsFixed(1)}%';
+          // If the segment model provided a label in metadata, use it.
+          _classLabelSegmentation =
+              segmentationOutput.metadata?['label'] as String? ??
+              _classLabelClassification;
         });
       } catch (e) {
         // Caso a segmentação falhe, usa a imagem original como fallback
         debugPrint('Segmentação falhou: $e');
         setState(() {
           _segmentedImageBytes = imageBytes;
+          _confidenceSegmentation = '—';
+          _classLabelSegmentation = '—';
         });
       }
 
@@ -347,25 +352,11 @@ class _MyHomePageState extends State<MyHomePage> {
                           height: 100,
                           color: Colors.grey[100],
                           child: _segmentedImageBytes != null
-                              ? Stack(
-                                  children: [
-                                    Image.memory(
-                                      _segmentedImageBytes!,
-                                      width: 100,
-                                      height: 100,
-                                      fit: BoxFit.cover,
-                                    ),
-                                    CustomPaint(
-                                      size: const Size(100, 100),
-                                      painter: BoundingBoxPainter(
-                                        _detections,
-                                        inputWidth:
-                                            _detectionModel?.inputWidth ?? 640,
-                                        inputHeight:
-                                            _detectionModel?.inputHeight ?? 640,
-                                      ),
-                                    ),
-                                  ],
+                              ? Image.memory(
+                                  _segmentedImageBytes!,
+                                  width: 100,
+                                  height: 100,
+                                  fit: BoxFit.cover,
                                 )
                               : const Center(child: Text('Imagem')),
                         ),
@@ -375,13 +366,13 @@ class _MyHomePageState extends State<MyHomePage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Detecção',
+                                'Segmentação',
                                 style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 6),
-                              Text(_classLabelDetection),
+                              Text(_classLabelSegmentation),
                               const SizedBox(height: 6),
-                              Text(_confidenceDetection),
+                              Text(_confidenceSegmentation),
                             ],
                           ),
                         ),
